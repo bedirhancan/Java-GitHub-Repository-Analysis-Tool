@@ -2,6 +2,7 @@ import java.io.*;
 import java.nio.file.*;
 import java.util.*;
 
+
 public class Program {
 
     public static void main(String[] args) {
@@ -52,7 +53,7 @@ public class Program {
         }
 
         if (!hasJavaFiles(directory)) {
-            System.out.println("Java dosyası bulunamadı.");
+            System.err.println("Java dosyası bulunamadı!");
             return;
         }
 
@@ -102,7 +103,6 @@ public class Program {
         return false;
     }
 
-
     public static void analyzeJavaFile(File file) {
         try {
             List<String> lines = Files.readAllLines(file.toPath());
@@ -110,7 +110,7 @@ public class Program {
             int otherCommentsLines = countOtherCommentsLines(lines);
             int codeLines = countCodeLines(lines);
             int LOC = lines.size();
-            int functionCount = countFunctionCount(lines);
+            int functionCount = countFunctions(lines);
 
             double YG = ((javadocLines + otherCommentsLines) * 0.8) / functionCount;
             double YH = (codeLines / (double) functionCount) * 0.3;
@@ -123,81 +123,98 @@ public class Program {
             System.out.println("Kod Satır Sayısı: " + codeLines);
             System.out.println("LOC: " + LOC);
             System.out.println("Fonksiyon Sayısı: " + functionCount);
-            System.out.println("Yorum Sapma Yüzdesi: %" + commentDeviationPercentage);
+            System.out.printf("Yorum Sapma Yüzdesi: %.2f%%%n", commentDeviationPercentage);
             System.out.println("-----------------------------------------");
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-   public static int countJavadocLines(List<String> lines) {
+
+
+    public static int countJavadocLines(List<String> lines) {
         int count = 0;
         boolean inJavadoc = false;
+
         for (String line : lines) {
             line = line.trim();
-            if (line.startsWith("/**")) {
+
+            // Satırın JavaDoc açılışı içeriyorsa
+            if (line.contains("/**")) {
                 inJavadoc = true;
-                //count++;
-            } else if (line.startsWith("/*") && !line.startsWith("/**")) {
-                inJavadoc = true;
-            } else if (line.startsWith("*") && inJavadoc) {
+            } 
+            // JavaDoc içerisindeki satırlar
+            else if (inJavadoc && !line.contains("*/") && !line.isBlank()) {
                 count++;
-            } else if (line.endsWith("*/") && inJavadoc) {
-                //count++;
+            } 
+            // Satır JavaDoc kapanışını içeriyorsa ve JavaDoc içerisindeyse
+            else if (line.contains("*/") && inJavadoc) {
                 inJavadoc = false;
             }
         }
         return count;
     }
-
-    
+  
     public static int countOtherCommentsLines(List<String> lines) {
-    	  int count = 0;
-    	  int singleLineCommentCount = 0;
-    	  int multiLineCommentCount = 0;
+        int count = 0;
+        boolean inComment = false;
 
-    	  String singleLineCommentRegex = "^//.*$"; // Tek satırlık yorum için düzenli ifade
-    	  String multiLineCommentStartRegex = "^/\\*"; // Çok satırlı yorumun başlangıcı için düzenli ifade
-    	  String multiLineCommentEndRegex = "\\*/"; // Çok satırlı yorumun bitişi için düzenli ifade
+        for (String line : lines) {
+            line = line.trim();
 
-    	  for (String line : lines) {
-    	    line = line.trim();
-    	    if (line.matches(singleLineCommentRegex)) { // Tek satırlık yorum mu?
-    	      singleLineCommentCount++;
-    	    } else if (line.matches(multiLineCommentStartRegex)) { // Çok satırlı yorum başlıyor mu?
-    	      multiLineCommentCount++;
-    	    } else if (line.matches(multiLineCommentEndRegex)) { // Çok satırlı yorum bitiyor mu?
-    	      multiLineCommentCount++;
-    	    }
-    	  }
+            // Satırın tek satırlık yorum açılışını içeriyorsa ve JavaDoc satırı değilse
+            if (line.contains("//")) {
+                count++;
+            } 
+            // Satırın çok satırlı yorum açılışını içeriyorsa ve JavaDoc satırı değilse
+            else if (line.contains("/*") && !line.contains("/**")) {
+                inComment = true;
+            }
+            // Çok satırlı yorum içerisindeki satırlar ve JavaDoc satırı değilse
+            else if (inComment && !line.contains("*/") ) {
+                count++;
+            } 
+            // Satır çok satırlı yorum kapanışını içeriyorsa, çok satırlı yorum içerisindeyse ve JavaDoc satırı değilse
+            else if (line.contains("*/") && inComment) {
+                inComment = false;
+            }
+        }
+        return count;
+    }
 
-    	  count = singleLineCommentCount + multiLineCommentCount;
-    	  return count;
-    	}
-
-    public static int countCodeLines(List<String> lines) {
-    	  int count = 0;
-    	  for (String line : lines) {
-    	    line = line.trim();
-    	    if (!line.isEmpty() && !line.startsWith("//") &&  !line.endsWith("//") && !line.startsWith("/**") && !line.startsWith("/*") 
-    	    		&& !line.endsWith("*/") ) {
-    	      count++;
-    	    }
-    	  }
-    	  return count;
-    	}
-
-    public static int countFunctionCount(List<String> lines) {
+      public static int countCodeLines(List<String> lines) {
         int count = 0;
         for (String line : lines) {
             line = line.trim();
-            if (line.matches("^((public|private|protected|static)\\s+)?(void\\s+)?[\\w\\d]+\\(.*\\).*\\{?$")
-                || line.matches("^\\s*return\\s+.*;?$")) {
+            // JavaDoc satırlarını, çok satırlı yorumları ve * ile başlayan satırları filtrele
+            if (!line.isEmpty() && !line.startsWith("//") && !line.startsWith("/*") && !line.startsWith("*")) {
                 count++;
             }
         }
         return count;
     }
+
+
+      private static boolean isFunction(String line) {
+    	    // Satırın boş olup olmadığını kontrol et
+    	    if (line.isEmpty()) {
+    	        return false;
+    	    }
+    	    // Satırın fonksiyon tanımı olup olmadığını kontrol et
+    	    return line.matches(".*\\b\\w+\\s*\\(.*\\)\\s*\\{?\\s*");
+    	}
+      
+      private static int countFunctions(List<String> lines) {
+    	    int functionCount = 0;
+
+    	    for (String line : lines) {
+    	        if (isFunction(line)) {
+    	            functionCount++;
+    	        }
+    	    }
+
+    	    return functionCount;
+    	}
 
 
     private static void deleteDirectory(Path directory) {
